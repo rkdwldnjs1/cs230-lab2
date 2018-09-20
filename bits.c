@@ -171,7 +171,8 @@ NOTES:
  *   Rating: 1
  */
 int bitAnd(int x, int y) {
-  return 2;
+
+  return ~((~x)|(~y));
 }
 /* 
  * getByte - Extract byte n from word x
@@ -182,7 +183,9 @@ int bitAnd(int x, int y) {
  *   Rating: 2
  */
 int getByte(int x, int n) {
-  return 2;
+  int a = n << 3; // n*8 because one byte is 8 bits
+  int b = x >> a; // shift n*8 bits to the right 
+  return b&0xFF;
 }
 /* 
  * logicalShift - shift x to the right by n, using a logical shift
@@ -190,10 +193,15 @@ int getByte(int x, int n) {
  *   Examples: logicalShift(0x87654321,4) = 0x08765432
  *   Legal ops: ! ~ & ^ | + << >>
  *   Max ops: 20
- *   Rating: 3 
+ *   Rating: 3
  */
 int logicalShift(int x, int n) {
-  return 2;
+  int num_arithshift = x >> n; // first, shift x by arithmetic shift
+  // now, make logical shift by using arithmetic shift and some bits like (111...1 , 011...1, 0011....1, 00011...1  ...)
+  int num_bit = ((0x1<<31)>>31) << n; // make successive (32-n) bits by 1, n bits by 0 like (111...100..000) 
+  int subtract_from_32 = ~ ((~32+0x01) + n) + 1; // it means (subtract_from_32 = 32 - n)
+  num_bit = ~ ((~ num_bit) << subtract_from_32); // this num_bit consists of successive n bits by 0, (32-n) bits by 1 like (00..00111..111) 
+  return num_arithshift & num_bit;
 }
 /*
  * bitCount - returns count of number of 1's in word
@@ -203,7 +211,25 @@ int logicalShift(int x, int n) {
  *   Rating: 4
  */
 int bitCount(int x) {
-  return 2;
+  // first make mask like 0x01010101, and number of 1's in each 8 bits accumulate at 1,9,17,25 bit location from right end, lastly add each accumulation(1,9,17,25)
+  int mask = 0x01 + ((0x01) << 8) + ((0x01) << 16) + ((0x01) << 24);
+  int sum = mask & x;
+  x = x >> 1;
+  sum = sum + (mask & x);
+  x = x >> 1;
+  sum = sum + (mask & x);
+  x = x >> 1;
+  sum = sum + (mask & x);
+  x = x >> 1;
+  sum = sum + (mask & x);
+  x = x >> 1;
+  sum = sum + (mask & x);
+  x = x >> 1;
+  sum = sum + (mask & x);
+  x = x >> 1;
+  sum = sum + (mask & x);
+
+  return (sum & 0xF) + ((sum >> 8) & 0xF) + ((sum >> 16) & 0xF) + ((sum >> 24) & 0xF);
 }
 /* 
  * bang - Compute !x without using !
@@ -213,7 +239,10 @@ int bitCount(int x) {
  *   Rating: 4 
  */
 int bang(int x) {
-  return 2;
+
+  return ~((( (~x + 1) >> 31 ) & 1 ) | ((x >> 31) & 1 ))+ 2; 
+  // in case x=0, Sign bit of (~x+1) is not 1 and it has '0' sign bit, 
+  // but in case x>0, Sign bit of (~x+1) is 1. and in case x<0, sign bit is 1
 }
 /* 
  * tmin - return minimum two's complement integer 
@@ -222,7 +251,7 @@ int bang(int x) {
  *   Rating: 1
  */
 int tmin(void) {
-  return 2;
+  return 0x1 << 31;
 }
 /* 
  * fitsBits - return 1 if x can be represented as an 
@@ -233,8 +262,12 @@ int tmin(void) {
  *   Max ops: 15
  *   Rating: 2
  */
-int fitsBits(int x, int n) {
-  return 2;
+int fitsBits(int x, int n) {  //
+  // If bits of x from n to 32 (from left end) consist of all 1 or all 0, function 'fitsBits' will return 1.
+  int num_shift = x >> (n+(~1)+1);  // 
+  int a = (!(!(num_shift ^ 0))) & (!(!(num_shift ^ ((0x1<<31)>>31)))); // If bits of num_shift consist of only 1 or only 0, integer 'a' will be 0
+                                                            // Else, integer 'a' will be 1
+  return ~a+2; // if a is 0, then ~a+2 is 1. and, if a is 1, then ~a+2 is 0
 }
 /* 
  * divpwr2 - Compute x/(2^n), for 0 <= n <= 30
@@ -245,7 +278,12 @@ int fitsBits(int x, int n) {
  *   Rating: 2
  */
 int divpwr2(int x, int n) {
-    return 2;
+  // when sign bit of x is 0 (x>0), throw down the demical point after dividing x. so, num_add is not needed.
+  // when sign bit of x is 1 (x<0) and -x is not the multiple of 2^n, num_add is needed. (num_add = 1)
+  int sign_bit = (x>>31) & 1;
+  int check_bit = ~ (((0x1<<31)>>31) << n); // check_bit consists of (32-n) consecutive 0 bits and (n) consecutive 1 bits.
+  int num_add = sign_bit & !(!(check_bit & x)); // if (check_bit & x) is 0, -x is the multiple of 2^n and if (check_bit & x) is not 0, -x is not the multilple of 2^n.
+  return (x >> n) + num_add;
 }
 /* 
  * negate - return -x 
@@ -255,7 +293,7 @@ int divpwr2(int x, int n) {
  *   Rating: 2
  */
 int negate(int x) {
-  return 2;
+  return ~x+1;
 }
 /* 
  * isPositive - return 1 if x > 0, return 0 otherwise 
@@ -265,7 +303,12 @@ int negate(int x) {
  *   Rating: 3
  */
 int isPositive(int x) {
-  return 2;
+  // considering the difference between 0 and positive number
+  int sign_bit = (x>>31) & 1; // sign_bit is sign bit of x.
+  int change_bit = ~sign_bit + 2; // if sign_bit is 0, then change_bit is 1 and if sign_bit is 1, then change_bit is 0
+  int y = ~x + change_bit; // now, if x>0, sign bit of y is 1 and if x<=0, sign bit of y is 0.
+
+  return (y>>31) & 1;
 }
 /* 
  * isLessOrEqual - if x <= y  then return 1, else return 0 
@@ -275,7 +318,20 @@ int isPositive(int x) {
  *   Rating: 3
  */
 int isLessOrEqual(int x, int y) {
-  return 2;
+  // Because y-x can be occurred overflow, y - x is impossible. so, I compute y/2 - x/2 
+  int a = 0;
+  int b = 0;
+  int c = 0;
+  int num_subtract2=0;
+  int num_subtract1 = (~ (x & 1) + 1) + (y & 1); // first bit from right of y - first bit from right of x
+  x = x >> 1; // x/2
+  y = y >> 1; // y/2
+  num_subtract2 = ((~x + 1) + y); // y/2 - x/2
+  a = ~ ((num_subtract2 >> 31) & 1) + 2; // if sign bit of y/2 - x/2 is 0 (y/2-x/2 >= 0), then a will be 1 , and if sign bit of y/2 - x/2 is 1(y/2-x/2 < 0), then a will be 0
+  b = !(!(num_subtract2)); //if y/2 - x/2 = 0, then b will be 0, and if y/2 - x/2 != 0, then b will be 1.
+  c = ~ ((num_subtract1 >> 31) & 1) + 2; // if first bit from right of (y - x) >= 0, then c will be 1, and if first bit from right of (y - x) < 0, then c will be 0
+
+  return a & ((a & b) | (a & c)); // at first 'a' means if x/2 > y/2, then a will be 0, so return 0 // second (a&b) means if y/2 > x/2, then (a&b) will be 1, so return 1 // third (a&c) works when y/2 = x/2 
 }
 /*
  * ilog2 - return floor(log base 2 of x), where x > 0
@@ -285,7 +341,27 @@ int isLessOrEqual(int x, int y) {
  *   Rating: 4
  */
 int ilog2(int x) {
-  return 2;
+  // I should find the left most bit 1. and that position number from the right is what this function should return.
+  int a = 0;
+  int b = 0;
+  int c = 0;
+  int d = 0;
+  int e = 0; // initialization
+  a = !(!(x >> 16)); // first, seperate 32 bits to a pair of 16bits. and, if front 16 bits is not 0(including 1), then a will be 1
+  x = x >> (a << 4); // when a is 1, Because front 16 bits has 1, all bits should transfer 16 bits to the right. when a is 0, all bits need not transfer
+  // now, investigate in 0 to 16 bit from right.
+  b = !(!(x >> 8)); // second, seperate 16 bits to a pair of 8bits. and, if front 8 bits is not 0(including 1), then b will be 1.
+  x = x >> (b << 3); // when b is 1, Because front 8 bits has 1, all bits should transfer 8 bits to the right. when a is 0, all bits need not transfer
+  // now, investigate in 0 to 8 bit from right.
+  c = !(!(x >> 4)); // do the same process like above.
+  x = x >> (c << 2);
+
+  d = !(!(x >> 2));
+  x = x >> (d << 1);
+
+  e = !(!(x >> 1));
+
+  return (a<<4) + (b<<3) + (c<<2) + (d<<1) + e; // for example (a,b,c,d,e) = (1,1,1,1,0) means leading 1's(left most bit) exist at the position of (16+8+4+2 = 30).
 }
 /* 
  * float_neg - Return bit-level equivalent of expression -f for
@@ -299,7 +375,14 @@ int ilog2(int x) {
  *   Rating: 2
  */
 unsigned float_neg(unsigned uf) {
- return 2;
+  unsigned int a = (uf << 1);
+
+  if ( (a>0xFF000000) && (a<=0xFFFFFFFF) ){  // when argument is NaN.
+    return uf;
+  }
+  else{
+    return uf + 0x80000000; // just change the sign bit of floating point.
+  }
 }
 /* 
  * float_i2f - Return bit-level equivalent of expression (float) x
@@ -311,7 +394,47 @@ unsigned float_neg(unsigned uf) {
  *   Rating: 4
  */
 unsigned float_i2f(int x) {
-  return 2;
+  //
+  unsigned int sign_bit = 0;
+  unsigned int E = 0;
+  unsigned int fraction = 0;
+  unsigned int carry = 0;
+  unsigned int expo = 0;
+  unsigned int n = 0;
+  unsigned int y = 0;
+
+ // sign_bit part
+
+  if ( x & 0x80000000 ){
+    sign_bit = 1;
+    x = ~x+1;
+  }
+
+ // E : exponential part
+  if (x==0){
+    return 0;
+  }
+
+  y = x; // x doesn't change because of other operations.
+  while (((y>>31) & 1) != 1){ // check the position where the leading 1's (left most bit) is located.
+    y = y<<1;
+    n = n + 1;
+  }
+  E = 31 - n;
+  expo = E + 127;
+
+ // fractional part
+  if (((x<<n) & 0x1FF) >= 0x180){ // considering rounding
+    carry = 1;
+  }
+  if (((x<<n) & 0xFF) > 0x80){ // considering rounding
+    carry = 1;
+  }
+  
+  fraction = (((x<<n) >> 8) & 0x7FFFFF) + carry;
+
+  return (sign_bit<<31) + (expo << 23) + fraction;
+
 }
 /* 
  * float_twice - Return bit-level equivalent of expression 2*f for
@@ -325,5 +448,28 @@ unsigned float_i2f(int x) {
  *   Rating: 4
  */
 unsigned float_twice(unsigned uf) {
-  return 2;
+  
+  unsigned int sign_bit = 0;
+  unsigned int expo = 0;
+  unsigned int fraction = 0;
+  unsigned int a = (uf << 1);
+
+  sign_bit = (uf >> 31) & 1;
+  expo = (uf>>23) & 0xFF;
+  fraction = uf & 0x7FFFFF;
+
+  if ( ((a>=0xFF000000) && (a<=0xFFFFFFFF))){  // when argument is NaN.
+    return uf;
+  }
+
+  if ( expo != 0 ){  // when exponential part is not 0
+    expo = expo + 1;
+  }
+
+  else{ // when exponential part is 0
+    fraction = fraction << 1; 
+  }
+
+  return (sign_bit << 31) + (expo << 23) + fraction;
+
 }
